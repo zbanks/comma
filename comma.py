@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import csv
-import 
 
 class CommaDialect(csv.Dialect):
     delimiter = ","
@@ -14,6 +13,7 @@ class CommaDialect(csv.Dialect):
     strict = False
 
 class CommaRow(object):
+    __slots__ = ("row", "header", "header_dict", "parsers", "serializers")
     def __init__(self, row, header=None, parsers=None, serializers=None):
         if isinstance(row, dict):
             header, row = zip(*row.items())
