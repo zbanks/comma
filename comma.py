@@ -5,7 +5,7 @@ import datetime
 import os
 
 try: 
-    import StringIO
+    from StringIO import StringIO
 except ImportError:
     from io import StringIO
 
@@ -35,12 +35,11 @@ class CommaRow(object):
             # header kwarg is just ignored if row is a dict
             self.header, self.row = zip(*row.items())
         else:
-            if header is None:
-                raise ValueError("kwarg `header` cannot be None unless row is a dict")
             self.header = header
             self.row = row
 
-        self.header_dict = dict(zip(self.header, range(len(self.header))))
+        if self.header is not None:
+            self.header_dict = dict(zip(self.header, range(len(self.header))))
 
         self.parsers = parsers
         self.serializers = serializers
@@ -74,6 +73,8 @@ class CommaRow(object):
                 return data
             return serializer(data)
         elif isinstance(self.serializers, dict):
+            if self.header is None:
+                raise ValueError("Unable to perform dict-like access without specifying a header")
             try:
                 serializer = self.serializers[self.header[i]]
             except KeyError, IndexError:
@@ -88,6 +89,8 @@ class CommaRow(object):
         if isinstance(key, int):
             return self._parse(key)
         elif isinstance(key, str):
+            if self.header is None:
+                raise ValueError("Unable to perform dict-like access without specifying a header")
             return self._parse(self.header_dict[key])
         raise TypeError
 
@@ -95,21 +98,23 @@ class CommaRow(object):
         if isinstance(key, int):
             self.row[key] = self._serialize(key)
         elif isinstance(key, str):
+            if self.header is None:
+                raise ValueError("Unable to perform dict-like access without specifying a header")
             k = self.header_dict[key]
             self.row[k] = self._serialize(k)
         raise TypeError
 
 class Comma(object):
-    def __init__(self, _csv_file, backup=None, dialect=None, has_header=None, sniff=1024, parsers=None, serializers=None):
-        if isinstance(_csv_file, str):
-            self.writeable = True
-            self.readable = os.path.exists(_csv_file)
+    def __init__(self, _csv_file, read=True, write=True, backup=None, dialect=None, has_header=None, sniff=1024, parsers=None, serializers=None):
+        if isinstance(_csv_file, file):
+            self.csv_file = _csv_file
+            self.readable = "r" in self.csv_file.mode and read
+            self.writeable = any([m in self.csv_file.mode for m in ('r+', 'w', 'a')]) and write
+        else:
+            self.writeable = write
+            self.readable = os.path.exists(_csv_file) and read
             mode = "r+" if self.readable else "w"
             self.csv_file = open(_csv_file, mode)
-        else:
-            self.csv_file = _csv_file
-            self.readable = "r" in self.csv_file.mode
-            self.writeable = any([m in self.csv_file.mode for m in ('r+', 'w', 'a')])
 
         self.buffered_output = self.readable and self.writeable
 
@@ -159,7 +164,7 @@ class Comma(object):
             self.reader = None
 
         if self.output_stream is not None:
-            self.writer = csv.writer(self.input_stream, dialect=dialect)
+            self.writer = csv.writer(self.output_stream, dialect=dialect)
         else:
             self.writer= None
 
@@ -183,10 +188,10 @@ class Comma(object):
         self.header_data = header_data
 
     def _text_row(self, row_data, *args, **kwargs):
-        return CommaRow(*args, text_row=row_data, header=header_data, parsers=self.parsers, serializers=self.serializers)
+        return CommaRow(*args, text_row=row_data, header=self.header, parsers=self.parsers, serializers=self.serializers)
 
     def _native_row(self, row_data, *args, **kwargs):
-        return CommaRow(*args, native_row=row_data, header=header_data, parsers=self.parsers, serializers=self.serializers)
+        return CommaRow(*args, native_row=row_data, header=self.header, parsers=self.parsers, serializers=self.serializers)
 
     def __next__(self):
         row = next(self.reader)
@@ -198,24 +203,26 @@ class Comma(object):
                 self.writer.writerow(self.header_data)
             # Probably don't exception to raise if a header isn't specified
         else:
-            raise ValueError("Comma object mode is '{}' and not writeable".format(self.mode))
+            raise ValueError("Comma object mode is not writeable")
 
     def write_row(self, data):
         if self.writer is not None:
             row = self._native_row(data)
             self.writer.writerow(row.row)
         else:
-            raise ValueError("Comma object mode is '{}' and not writeable".format(self.mode))
+            raise ValueError("Comma object mode is not writeable")
 
     def close(self):
         # Close open files, copy write buffer to read buffer.
-        if self.output_stream is not None:
+        if self.buffered_output:
             # Copy file over
             self.input_stream.seek(0)
             self.input_stream.write(self.output_stream)
             self.input_stream.truncate()
+        if self.output_stream is not None:
             self.output_stream.close()
-        self.input_stream.close()
+        if self.input_stream is not None:
+            self.input_stream.close()
 
 def make_backup(original, suffix_template="%y%m%d", suffix=None):
     if suffix is None:
