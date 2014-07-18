@@ -103,7 +103,7 @@ class Comma(object):
     def __init__(self, _csv_file, backup=None, dialect=None, has_header=None, sniff=1024, parsers=None, serializers=None):
         if isinstance(_csv_file, str):
             self.writeable = True
-            self.readable = os.path.exists(_csv_file):
+            self.readable = os.path.exists(_csv_file)
             mode = "r+" if self.readable else "w"
             self.csv_file = open(_csv_file, mode)
         else:
