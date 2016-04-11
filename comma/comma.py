@@ -85,6 +85,19 @@ class CommaRow(object):
     def __len__(self):
         return len(self.row)
 
+    def list(self):
+        return self[:]
+
+    def dict(self):
+        if self.header is None:
+            raise ValueError("Unable to perform dict-like access without specifying a header")
+        return {self.header[i] : self[i] for i in range(len(self))}
+
+    def __repr__(self):
+        if self.header is None:
+            return repr(self.list())
+        return repr(self.dict())
+
     def __getitem__(self, key):
         if isinstance(key, int):
             return self._parse(key)
@@ -117,7 +130,8 @@ class Comma(object):
             self.writeable = write
             self.readable = os.path.exists(_csv_file) and read
             mode = "r+" if self.readable else "w"
-            self.csv_file = open(_csv_file, mode, newline='')
+            #self.csv_file = open(_csv_file, mode, newline='')
+            self.csv_file = open(_csv_file, mode)
 
         self.buffered_output = self.readable and self.writeable
 
@@ -201,7 +215,8 @@ class Comma(object):
         return self._text_row(row)
 
     def next(self):
-        return next(self)
+        row = next(self.reader)
+        return self._text_row(row)
 
     def __iter__(self):
         return self
